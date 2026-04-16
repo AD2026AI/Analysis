@@ -137,21 +137,36 @@ if prod_file and sess_file and sales_file:
             'Total ACW Duration in Interval_sec': 'sum'
         }).reset_index()
 
-        # Final Merge
-        final_df = pd.merge(prod_final, sales_final, on=['Date', 'User ID'], how='left')
-        final_df = pd.merge(final_df, break_pivot, on=['Date', 'User ID'], how='left').fillna(0)
-
-        st.write("Finalizing formats...")
+        # 7. Convert Sec to HMS with specific naming
         dynamic_breaks = [c for c in break_pivot.columns if c not in ['Date', 'User ID']]
-        time_cols_to_convert = ['Total Staffed Duration_sec', 'Total Ready Duration_sec', 
-                                'Total Break Duration_sec', 'Total Idle Time_sec', 
-                                'Total Talk Time in Interval_sec', 'Total ACW Duration in Interval_sec'] + dynamic_breaks
         
-        for col in time_cols_to_convert:
-            new_col_name = col.replace('_sec', '').replace('Total ', '')
-            final_df[new_col_name] = final_df[col].apply(sec_to_hms)
+        # Explicitly map the system names to your desired report names
+        rename_map = {
+            'Total Staffed Duration_sec': 'Staffed Duration',
+            'Total Ready Duration_sec': 'Ready Duration',
+            'Total Break Duration_sec': 'Break Duration',
+            'Total Idle Time_sec': 'Idle Time',
+            'Total Talk Time in Interval_sec': 'Talk Time',
+            'Total ACW Duration in Interval_sec': 'ACW Duration'
+        }
 
-        perf_cols = ['Idle Time', 'Talk Time', 'ACW Duration', 'Total_OB_Calls', 'Connected_OB_Calls', 'Unq_OB_Calls', 'Unq_CC_Calls']
+        for original, clean in rename_map.items():
+            if original in final_df.columns:
+                final_df[clean] = final_df[original].apply(sec_to_hms)
+
+        # Convert dynamic breaks
+        clean_break_cols = []
+        for col in dynamic_breaks:
+            clean_name = col.replace('Total ', '')
+            final_df[clean_name] = final_df[col].apply(sec_to_hms)
+            clean_break_cols.append(clean_name)
+
+        # Final Column Selection using the new clean names
+        perf_metrics = ['Idle Time', 'Talk Time', 'ACW Duration', 'Total_OB_Calls', 'Connected_OB_Calls', 'Unq_OB_Calls', 'Unq_CC_Calls']
+        final_order = ['Date', 'User Name', 'User ID', 'Staffed Duration', 'Ready Duration', 'Break Duration'] + clean_break_cols + perf_metrics
+        
+        # Use a list comprehension to ensure only existing columns are selected
+        result = final_df[[c for c in final_order if c in final_df.columns]].copy()
         final_order = ['Date', 'User Name', 'User ID', 'Staffed Duration', 'Ready Duration', 'Break Duration'] + \
                       [b.replace('Total ', '') for b in dynamic_breaks] + perf_cols
         
